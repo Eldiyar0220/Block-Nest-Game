@@ -11,6 +11,7 @@ class AppSettings {
     required this.bestEasy,
     required this.bestMedium,
     required this.bestHard,
+    required this.bestFun,
   });
 
   final ThemeMode themeMode;
@@ -19,6 +20,7 @@ class AppSettings {
   final int bestEasy;
   final int bestMedium;
   final int bestHard;
+  final int bestFun;
 
   static const initial = AppSettings(
     themeMode: ThemeMode.system,
@@ -27,6 +29,7 @@ class AppSettings {
     bestEasy: 0,
     bestMedium: 0,
     bestHard: 0,
+    bestFun: 0,
   );
 }
 
@@ -59,6 +62,7 @@ class PrefsStore implements ProgressStore {
       bestEasy: prefs.getInt('best_easy') ?? prefs.getInt('best') ?? 0,
       bestMedium: prefs.getInt('best_medium') ?? 0,
       bestHard: prefs.getInt('best_hard') ?? 0,
+      bestFun: prefs.getInt('best_fun') ?? 0,
     );
   }
 
@@ -71,6 +75,7 @@ class PrefsStore implements ProgressStore {
     await prefs.setInt('best_easy', settings.bestEasy);
     await prefs.setInt('best_medium', settings.bestMedium);
     await prefs.setInt('best_hard', settings.bestHard);
+    await prefs.setInt('best_fun', settings.bestFun);
   }
 }
 
@@ -78,6 +83,7 @@ NestLevel _decodeLevel(String? raw) {
   return switch (raw) {
     'medium' => NestLevel.medium,
     'hard' => NestLevel.hard,
+    'fun' => NestLevel.fun,
     _ => NestLevel.easy,
   };
 }

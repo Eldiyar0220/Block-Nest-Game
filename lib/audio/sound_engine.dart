@@ -1,80 +1,67 @@
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:audioplayers/audioplayers.dart';
+import 'package:flame_audio/flame_audio.dart';
 
-import 'synth.dart';
+enum Sfx {
+  tap,
+  rotate,
+  pickup,
+  lift,
+  place,
+  reject,
+  toggle,
+  complete,
+  victory,
+  boom,
+}
 
-/// Plays the generated chimes. Playback is best-effort: if the device refuses
-/// a clip, the puzzle keeps going.
+/// Plays the clips in `assets/audio` through Flame.
 class SoundEngine {
-  SoundEngine({required this.enabled}) {
-    for (final sfx in Sfx.values) {
-      _clips[sfx] = renderSfx(sfx);
-    }
-  }
+  SoundEngine({required this.enabled});
 
   bool enabled;
-  final Map<Sfx, Uint8List> _clips = {};
-  final List<AudioPlayer> _players = [];
-  var _cursor = 0;
   var _ready = false;
   var _disposed = false;
 
+  static const _files = {
+    Sfx.tap: 'tap.wav',
+    Sfx.rotate: 'rotate.wav',
+    Sfx.pickup: 'pickup.wav',
+    Sfx.lift: 'lift.wav',
+    Sfx.place: 'place.wav',
+    Sfx.reject: 'reject.wav',
+    Sfx.toggle: 'toggle.wav',
+    Sfx.complete: 'complete.wav',
+    Sfx.victory: 'victory.wav',
+    Sfx.boom: 'boom.wav',
+  };
+
   Future<void> init() async {
-    final context = AudioContext(
-      android: const AudioContextAndroid(
-        contentType: AndroidContentType.sonification,
-        usageType: AndroidUsageType.game,
-        audioFocus: AndroidAudioFocus.none,
-      ),
-      iOS: AudioContextIOS(category: AVAudioSessionCategory.ambient),
-    );
     try {
-      await AudioPlayer.global.setAudioContext(context);
+      await FlameAudio.audioCache.loadAll(_files.values.toList());
     } on Object {
-      // Mixing setup is optional.
+      return;
     }
     if (_disposed) return;
-
-    final created = <AudioPlayer>[];
-    try {
-      for (var i = 0; i < 5; i++) {
-        final player = AudioPlayer();
-        await player.setPlayerMode(PlayerMode.lowLatency);
-        await player.setReleaseMode(ReleaseMode.stop);
-        await player.setVolume(0.85);
-        created.add(player);
-      }
-    } on Object {
-      for (final player in created) {
-        unawaited(player.dispose());
-      }
-      return;
-    }
-    if (_disposed) {
-      for (final player in created) {
-        unawaited(player.dispose());
-      }
-      return;
-    }
-    _players.addAll(created);
     _ready = true;
   }
 
   void play(Sfx sfx) {
-    if (!enabled || !_ready || _players.isEmpty) return;
-    final clip = _clips[sfx];
-    if (clip == null) return;
-    final player = _players[_cursor];
-    _cursor = (_cursor + 1) % _players.length;
-    unawaited(_start(player, clip));
+    if (!enabled || !_ready) return;
+    final file = _files[sfx];
+    if (file == null) return;
+    unawaited(_start(file));
   }
 
-  Future<void> _start(AudioPlayer player, Uint8List clip) async {
+  Future<void> _start(String file) async {
     try {
-      await player.stop();
-      await player.play(BytesSource(clip, mimeType: 'audio/wav'));
+      final player = await FlameAudio.play(file, volume: 0.8);
+      try {
+        await player.onPlayerComplete.first.timeout(const Duration(seconds: 2));
+      } on Object {
+        // A short clip can finish before the callback is wired.
+      }
+      await player.dispose();
     } on Object {
       return;
     }
@@ -83,9 +70,5 @@ class SoundEngine {
   void dispose() {
     _disposed = true;
     _ready = false;
-    for (final player in _players) {
-      unawaited(player.dispose());
-    }
-    _players.clear();
   }
 }

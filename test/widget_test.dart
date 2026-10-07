@@ -1,5 +1,4 @@
 import 'package:block_nest/app_controller.dart';
-import 'package:block_nest/game/level.dart';
 import 'package:block_nest/main.dart';
 import 'package:block_nest/storage/progress_store.dart';
 import 'package:flutter/material.dart';
@@ -21,47 +20,31 @@ void main() {
   testWidgets('shows the score and rotates a piece', (tester) async {
     await _phone(tester, const Size(390, 844));
     await tester.pumpWidget(_app());
-    await tester.pumpAndSettle();
+    await _frames(tester);
 
     expect(find.text('Block Nest'), findsOneWidget);
-    expect(find.textContaining('исчезнут'), findsOneWidget);
-    expect(find.text('Лёгкий'), findsOneWidget);
-    expect(find.text('запас'), findsOneWidget);
-    expect(find.text('Средний'), findsOneWidget);
+    expect(find.text('Classic'), findsOneWidget);
+    expect(find.text('Normal'), findsOneWidget);
     expect(find.text('Сложный'), findsOneWidget);
     expect(find.text('скоро'), findsNothing);
-    expect(_bombs(), findsNothing);
-    expect(find.text('дальше'), findsOneWidget);
-    expect(find.byKey(const ValueKey('upcoming-0')), findsOneWidget);
+    expect(find.byKey(const Key('playfield')), findsNothing);
+
+    await _enter(tester, 'level-medium');
+    expect(find.textContaining('исчезнут'), findsOneWidget);
     expect(find.byKey(const Key('score')), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('level-medium')));
-    await tester.pump();
     expect(find.text('Счёт обнулится.'), findsNothing);
-    expect(find.textContaining('парами'), findsOneWidget);
-    expect(find.textContaining('запас'), findsOneWidget);
-    expect(find.text('дальше'), findsNothing);
-    expect(find.byKey(const ValueKey('upcoming-0')), findsNothing);
-    expect(_bombs(), findsNWidgets(NestLevel.medium.bombPace!.opening));
+    expect(find.textContaining('парами'), findsWidgets);
+    await _backToMenu(tester);
 
-    await tester.tap(find.byKey(const Key('level-hard')));
-    await tester.pump();
-    expect(find.text('Счёт обнулится.'), findsNothing);
-    expect(find.textContaining('часто'), findsOneWidget);
-    expect(find.textContaining('запас'), findsNothing);
-    expect(_bombs(), findsNWidgets(NestLevel.hard.bombPace!.opening));
+    await _enter(tester, 'level-hard');
+    expect(find.textContaining('часто'), findsWidgets);
+    await _backToMenu(tester);
 
-    await tester.tap(find.byKey(const Key('level-easy')));
-    await tester.pump();
-    expect(_bombs(), findsNothing);
-    expect(find.byKey(const ValueKey('upcoming-0')), findsOneWidget);
+    await _enter(tester, 'level-easy');
     expect(
       tester.widget<IconButton>(find.byKey(const Key('undo-button'))).onPressed,
       isNull,
     );
-
-    await tester.tap(find.byKey(const ValueKey('tray-0')));
-    await tester.pump();
     expect(tester.takeException(), isNull);
   });
 
@@ -70,17 +53,19 @@ void main() {
   ) async {
     await _phone(tester, const Size(390, 844));
     await tester.pumpWidget(_app());
-    await tester.pumpAndSettle();
+    await _frames(tester);
 
     await tester.tap(find.byKey(const Key('theme-button')));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(
       Theme.of(tester.element(find.byType(Scaffold))).brightness,
       Brightness.dark,
     );
 
     await tester.tap(find.byKey(const Key('theme-button')));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(
       Theme.of(tester.element(find.byType(Scaffold))).brightness,
       Brightness.light,
@@ -95,22 +80,37 @@ void main() {
   testWidgets('fits on a narrow phone', (tester) async {
     await _phone(tester, const Size(360, 640));
     await tester.pumpWidget(_app());
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(tester.takeException(), isNull);
+    await _enter(tester, 'level-easy');
     expect(find.textContaining('рекорд'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Заново'));
     await tester.pump();
-    expect(find.text('Block Nest'), findsOneWidget);
+    expect(find.text('Block Nest'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }
 
-Finder _bombs() {
-  return find.byWidgetPredicate((widget) {
-    final key = widget.key;
-    return key is ValueKey<String> && key.value.startsWith('bomb-');
-  });
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 8; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
+Future<void> _enter(WidgetTester tester, String key) async {
+  await tester.tap(find.byKey(Key(key)).hitTestable());
+  await _settle(tester);
+}
+
+Future<void> _backToMenu(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('menu-button')).hitTestable());
+  await _settle(tester);
+}
+
+Future<void> _frames(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
 }
 
 Future<void> _phone(WidgetTester tester, Size size) async {

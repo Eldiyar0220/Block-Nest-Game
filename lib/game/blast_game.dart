@@ -49,6 +49,9 @@ class BlastGame extends ChangeNotifier {
   static const undoDepth = 5;
   static const bombScore = 150;
 
+  /// FUN cells placed before the player may pick a row to wipe.
+  static const lightningNeed = 8;
+
   /// One line is Good, two are Excellent, three or more are Perfect.
   static String praiseFor(int lines) {
     if (lines >= 3) return 'Perfect';
@@ -73,10 +76,22 @@ class BlastGame extends ChangeNotifier {
   int score = 0;
   int best;
   bool gameOver = false;
+
+  /// FUN charge. Other modes leave it at zero.
+  int lightning = 0;
+
+  /// Row under the finger while the player is choosing a lightning strike.
+  int? lightningRow;
   String? banner;
   int lastClear = 0;
   int lastBombs = 0;
+  int combo = 0;
   final Set<Point> bursting = {};
+  final List<int> clearRows = [];
+  final List<int> clearCols = [];
+
+  /// Color of the piece that is about to clear, or just cleared, a line.
+  int? placedColor;
 
   int? draggingSlot;
   Point? hoverAnchor;
@@ -98,6 +113,10 @@ class BlastGame extends ChangeNotifier {
 
   bool get canUndo => _history.isNotEmpty && draggingSlot == null;
 
+  /// FUN charge is full, so the next tap on the board picks a row to wipe.
+  bool get lightningReady =>
+      level.isFun && lightning >= lightningNeed && !busy && !gameOver;
+
   bool get canStore =>
       level.hasHold &&
       !busy &&
@@ -118,11 +137,42 @@ class BlastGame extends ChangeNotifier {
     if (slot == null || anchor == null || !hoverValid) return const {};
     final piece = tray[slot];
     if (piece == null) return const {};
-    return _expandBombs(
-      _linesIfPlaced(piece.cells, anchor),
-      pending: piece.cells,
-      anchor: anchor,
-    );
+    final lines = _linesIfPlaced(piece.cells, anchor);
+    if (lines.isEmpty) return const {};
+    return _expandBombs(lines, pending: piece.cells, anchor: anchor);
+  }
+
+  void hoverLightning(int? row) {
+    final next = lightningReady && row != null && row >= 0 && row < size
+        ? row
+        : null;
+    if (next == lightningRow) return;
+    lightningRow = next;
+    notifyListeners();
+  }
+
+  /// Spends one full charge on the row the player chose.
+  void strikeRow(int row) {
+    if (!lightningReady || row < 0 || row >= size) return;
+    _remember();
+    lightning -= lightningNeed;
+    lightningRow = null;
+    final cells = <Point>{for (var c = 0; c < size; c++) Point(row, c)};
+    clearRows
+      ..clear()
+      ..add(row);
+    clearCols.clear();
+    lastClear = 1;
+    final blast = _expandBombs(cells);
+    lastBombs = blast.where(bombs.contains).length;
+    bursting
+      ..clear()
+      ..addAll(blast);
+    placedColor = _lineColor(cells) ?? 2;
+    _addScore(100 * lastClear * lastClear + bombScore * lastBombs);
+    banner = praiseFor(lastClear);
+    onEvent?.call(BlastEvent.blast);
+    notifyListeners();
   }
 
   void setHoldHot(bool hot) {
@@ -143,7 +193,7 @@ class BlastGame extends ChangeNotifier {
   }
 
   void store(int slot) {
-    if (busy || gameOver) return;
+    if (busy || gameOver || lightningReady) return;
     final piece = tray[slot];
     if (piece == null) return;
     if (!canStore) {
@@ -162,7 +212,13 @@ class BlastGame extends ChangeNotifier {
 
   /// Puts the spared piece back into the first empty tray slot.
   void recall() {
-    if (busy || gameOver || draggingSlot != null || held == null) return;
+    if (busy ||
+        gameOver ||
+        lightningReady ||
+        draggingSlot != null ||
+        held == null) {
+      return;
+    }
     final slot = tray.indexWhere((piece) => piece == null);
     if (slot < 0) {
       onEvent?.call(BlastEvent.reject);
@@ -176,7 +232,7 @@ class BlastGame extends ChangeNotifier {
   }
 
   void rotate(int slot) {
-    if (busy || gameOver || draggingSlot != null) return;
+    if (busy || gameOver || lightningReady || draggingSlot != null) return;
     final piece = tray[slot];
     if (piece == null) return;
     piece.cells = rotateClockwise(piece.cells);
@@ -185,7 +241,7 @@ class BlastGame extends ChangeNotifier {
   }
 
   void beginDrag(int slot) {
-    if (busy || gameOver || draggingSlot != null) return;
+    if (busy || gameOver || lightningReady || draggingSlot != null) return;
     if (tray[slot] == null) return;
     draggingSlot = slot;
     hoverAnchor = null;
@@ -226,6 +282,8 @@ class BlastGame extends ChangeNotifier {
     }
     tray[slot] = null;
     _addScore(10 * piece.cells.length);
+    placedColor = piece.colorIndex;
+    if (level.isFun) lightning += piece.cells.length;
     if (_armBlast()) {
       onEvent?.call(BlastEvent.blast);
       notifyListeners();
@@ -234,6 +292,8 @@ class BlastGame extends ChangeNotifier {
     banner = null;
     lastClear = 0;
     lastBombs = 0;
+    placedColor = null;
+    combo = 0;
     _refillIfEmpty();
     onEvent?.call(BlastEvent.place);
     _continueAfterPlace();
@@ -255,7 +315,7 @@ class BlastGame extends ChangeNotifier {
       board[cell.r][cell.c] = null;
     }
     bombs.removeWhere(bursting.contains);
-    bursting.clear();
+    _endBurst();
     banner = null;
     lastBombs = 0;
     _refillIfEmpty();
@@ -281,10 +341,11 @@ class BlastGame extends ChangeNotifier {
         board[r][c] = null;
       }
     }
-    bursting.clear();
+    _endBurst();
     banner = null;
     lastClear = 0;
     score = 0;
+    combo = 0;
     gameOver = false;
     draggingSlot = null;
     hoverAnchor = null;
@@ -292,6 +353,8 @@ class BlastGame extends ChangeNotifier {
     held = null;
     holdsUsed = 0;
     holdHot = false;
+    lightning = 0;
+    lightningRow = null;
     bombs.clear();
     lastBombs = 0;
     _placements = 0;
@@ -316,10 +379,12 @@ class BlastGame extends ChangeNotifier {
       nextId: _nextId,
       banner: banner,
       lastClear: lastClear,
+      combo: combo,
       bombs: Set<Point>.of(bombs),
       placements: _placements,
       held: _copyPiece(held),
       holdsUsed: holdsUsed,
+      lightning: lightning,
     );
   }
 
@@ -338,15 +403,18 @@ class BlastGame extends ChangeNotifier {
     _nextId = turn.nextId;
     banner = turn.banner;
     lastClear = turn.lastClear;
+    combo = turn.combo;
     lastBombs = 0;
     _placements = turn.placements;
     held = turn.held;
     holdsUsed = turn.holdsUsed;
+    lightning = turn.lightning;
+    lightningRow = null;
     holdHot = false;
     bombs
       ..clear()
       ..addAll(turn.bombs);
-    bursting.clear();
+    _endBurst();
     draggingSlot = null;
     hoverAnchor = null;
     hoverValid = false;
@@ -431,15 +499,33 @@ class BlastGame extends ChangeNotifier {
   bool _armBlast() {
     final lines = _collectLines();
     if (lines.isEmpty) return false;
+    combo += 1;
     final blast = _expandBombs(lines);
     lastBombs = blast.where(bombs.contains).length;
     bursting
       ..clear()
       ..addAll(blast);
+    placedColor ??= _lineColor(lines);
     final gain = 100 * lastClear * lastClear + bombScore * lastBombs;
     _addScore(gain);
     banner = praiseFor(lastClear);
     return true;
+  }
+
+  void _endBurst() {
+    bursting.clear();
+    clearRows.clear();
+    clearCols.clear();
+    placedColor = null;
+    lightningRow = null;
+  }
+
+  int? _lineColor(Set<Point> lines) {
+    for (final cell in lines) {
+      final color = board[cell.r][cell.c];
+      if (color != null) return color;
+    }
+    return null;
   }
 
   bool _hasBlock(int r, int c) {
@@ -502,6 +588,12 @@ class BlastGame extends ChangeNotifier {
       if (full) cols.add(c);
     }
     lastClear = rows.length + cols.length;
+    clearRows
+      ..clear()
+      ..addAll(rows);
+    clearCols
+      ..clear()
+      ..addAll(cols);
     final cells = <Point>{};
     for (final r in rows) {
       for (var c = 0; c < size; c++) {
@@ -620,7 +712,7 @@ class BlastGame extends ChangeNotifier {
     if (spare != null && tray.any((piece) => piece == null) && _align(spare)) {
       placeable = true;
     }
-    if (!placeable) {
+    if (!placeable && !lightningReady) {
       gameOver = true;
       onEvent?.call(BlastEvent.gameOver);
     }
@@ -657,10 +749,12 @@ class _Turn {
     required this.nextId,
     required this.banner,
     required this.lastClear,
+    required this.combo,
     required this.bombs,
     required this.placements,
     required this.held,
     required this.holdsUsed,
+    required this.lightning,
   });
 
   final List<List<int?>> board;
@@ -671,8 +765,10 @@ class _Turn {
   final int nextId;
   final String? banner;
   final int lastClear;
+  final int combo;
   final Set<Point> bombs;
   final int placements;
   final BlastPiece? held;
   final int holdsUsed;
+  final int lightning;
 }

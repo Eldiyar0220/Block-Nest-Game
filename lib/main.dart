@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'app_controller.dart';
 import 'audio/sound_engine.dart';
 import 'storage/progress_store.dart';
-import 'ui/game_screen.dart';
+import 'ui/menu_screen.dart';
 import 'ui/nest_theme.dart';
 
 Future<void> main() async {
@@ -73,11 +73,9 @@ class _BlockNestAppState extends State<BlockNestApp> {
           themeMode: widget.controller.themeMode,
           themeAnimationDuration: const Duration(milliseconds: 350),
           themeAnimationCurve: Curves.easeOutCubic,
-          home: GameScreen(controller: widget.controller, sound: _sound),
+          home: MenuScreen(controller: widget.controller, sound: _sound),
         );
       },
     );
   }
 }
-
-

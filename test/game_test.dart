@@ -502,6 +502,93 @@ void main() {
     expect(game.gameOver, isFalse);
     expect(game.available, isNotEmpty);
   });
+
+  test('fun lightning waits until the player picks a row', () {
+    final game = BlastGame(random: Random(1), level: NestLevel.fun);
+    expect(game.bombs, isEmpty);
+    expect(game.level.hasBombs, isFalse);
+    expect(game.lightning, 0);
+    expect(game.lightningReady, isFalse);
+
+    _mono(game);
+    game.beginDrag(0);
+    game.hover(const Point(5, 5), active: true);
+    game.drop();
+    expect(game.lightning, 1);
+    expect(game.bursting, isEmpty);
+    expect(game.bombs, isEmpty);
+
+    for (var c = 0; c < 4; c++) {
+      game.board[2][c] = 3;
+    }
+    game.board[1][6] = 5;
+    game.lightning = BlastGame.lightningNeed - 1;
+    _mono(game);
+    game.beginDrag(0);
+    game.hover(const Point(4, 4), active: true);
+    expect(game.clearPreview, isEmpty);
+    game.drop();
+
+    expect(game.lightning, BlastGame.lightningNeed);
+    expect(game.lightningReady, isTrue);
+    expect(game.bursting, isEmpty);
+    expect(game.clearRows, isEmpty);
+    expect(game.board[2][0], 3);
+    expect(game.board[4][4], isNotNull);
+
+    _mono(game);
+    game.beginDrag(0);
+    expect(game.draggingSlot, isNull);
+
+    game.hoverLightning(1);
+    expect(game.lightningRow, 1);
+    game.strikeRow(2);
+
+    expect(game.lightning, 0);
+    expect(game.lightningReady, isFalse);
+    expect(game.clearRows, [2]);
+    expect(game.clearCols, isEmpty);
+    expect(game.lastClear, 1);
+    expect(game.bursting.contains(const Point(2, 7)), isTrue);
+    expect(game.bursting.contains(const Point(1, 6)), isFalse);
+    expect(game.board[4][4], isNotNull);
+
+    game.commitBlast();
+    expect(game.board[2].every((cell) => cell == null), isTrue);
+    expect(game.board[1][6], 5);
+    expect(game.board[4][4], isNotNull);
+
+    game.undo();
+    expect(game.lightning, BlastGame.lightningNeed);
+    expect(game.lightningReady, isTrue);
+    expect(game.board[2][0], 3);
+
+    game.restart();
+    expect(game.lightning, 0);
+    expect(game.board[4][4], isNull);
+  });
+
+  test('a fun line clear stays a single line until lightning is full', () {
+    final game = BlastGame(random: Random(1), level: NestLevel.fun);
+    _mono(game);
+    for (var c = 0; c < 7; c++) {
+      game.board[0][c] = 1;
+    }
+    for (var c = 0; c < 3; c++) {
+      game.board[3][c] = 4;
+    }
+    game.lightning = 2;
+    game.beginDrag(0);
+    game.hover(const Point(0, 7), active: true);
+    game.drop();
+
+    expect(game.combo, 1);
+    expect(game.lastClear, 1);
+    expect(game.clearRows, [0]);
+    expect(game.clearCols, isEmpty);
+    expect(game.lightning, 3);
+    expect(game.board[3][0], 4);
+  });
 }
 
 BlastGame _game() => BlastGame(random: Random(1), best: 0);

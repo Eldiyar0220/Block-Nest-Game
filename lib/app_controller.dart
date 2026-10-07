@@ -12,7 +12,8 @@ class AppController extends ChangeNotifier {
       level = initial.level,
       bestEasy = initial.bestEasy,
       bestMedium = initial.bestMedium,
-      bestHard = initial.bestHard;
+      bestHard = initial.bestHard,
+      bestFun = initial.bestFun;
 
   final ProgressStore store;
   ThemeMode themeMode;
@@ -21,11 +22,13 @@ class AppController extends ChangeNotifier {
   int bestEasy;
   int bestMedium;
   int bestHard;
+  int bestFun;
 
   int bestFor(NestLevel value) {
     return switch (value) {
       NestLevel.medium => bestMedium,
       NestLevel.hard => bestHard,
+      NestLevel.fun => bestFun,
       NestLevel.easy => bestEasy,
     };
   }
@@ -59,6 +62,9 @@ class AppController extends ChangeNotifier {
       case NestLevel.hard:
         if (value <= bestHard) return;
         bestHard = value;
+      case NestLevel.fun:
+        if (value <= bestFun) return;
+        bestFun = value;
       case NestLevel.easy:
         if (value <= bestEasy) return;
         bestEasy = value;
@@ -77,6 +83,7 @@ class AppController extends ChangeNotifier {
           bestEasy: bestEasy,
           bestMedium: bestMedium,
           bestHard: bestHard,
+          bestFun: bestFun,
         ),
       );
     } on Object {
